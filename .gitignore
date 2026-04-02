@@ -1,0 +1,68 @@
+# =========================
+# Python / Django
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# =========================
+# Environment variables
+# =========================
+.env
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# PostgreSQL dumps
+# =========================
+*.sql
+*.dump
+
+# =========================
+# Django static & media
+# =========================
+media/
+staticfiles/
+static/
+
+# =========================
+# Migrations cache only (keep migrations!)
+# =========================
+*/migrations/*.pyc
+*/migrations/**/__pycache__/
+
+# =========================
+# Coverage / testing
+# =========================
+.coverage
+htmlcov/
+.pytest_cache/
+
+# =========================
+# Celery
+# =========================
+celerybeat-schedule
+celerybeat.pid
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
