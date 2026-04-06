@@ -24,4 +24,5 @@ app.conf.update(
     worker_max_tasks_per_child=500,     # recycle worker to free rembg model memory
     worker_max_memory_per_child=512000, # 512 MB — rembg model is large
     broker_connection_retry_on_startup=True,
+    worker_pool="solo", 
 )

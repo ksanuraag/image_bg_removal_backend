@@ -3,13 +3,25 @@ import os
 from io import BytesIO
 
 from celery import shared_task
+from celery.signals import worker_process_init
 from django.core.files.base import ContentFile
 from PIL import Image
-from rembg import remove
+from transparent_background import Remover
 
 from .models import ImageUpload
 
 logger = logging.getLogger(__name__)
+
+_remover = None  # per-worker singleton
+
+
+@worker_process_init.connect
+def init_remover(**kwargs):
+    """Called once per Celery worker process after fork — safe for CUDA/torch."""
+    global _remover
+
+    _remover = Remover(mode="base")
+    logger.info("Remover model loaded in worker process (PID %s)", os.getpid())
 
 
 @shared_task(
@@ -20,11 +32,12 @@ logger = logging.getLogger(__name__)
     ignore_result=True,
 )
 def process_image(self, image_id: int) -> None:
-    """
-    Remove the background from an uploaded image and save the result.
-    Marks the record as 'failed' instead of crashing if anything goes wrong,
-    so the API always returns a meaningful status.
-    """
+    global _remover
+
+    # Fallback: if somehow called without worker_process_init (e.g. eager mode)
+    if _remover is None:
+        _remover = Remover(mode="fast")
+
     try:
         obj = ImageUpload.objects.get(pk=image_id)
     except ImageUpload.DoesNotExist:
@@ -35,34 +48,32 @@ def process_image(self, image_id: int) -> None:
     obj.save(update_fields=["status"])
 
     try:
-        # Open input from storage (works with S3, local, etc.)
         obj.input_image.open("rb")
         input_bytes = obj.input_image.read()
         obj.input_image.close()
 
-        input_image = Image.open(BytesIO(input_bytes)).convert("RGBA")
+        img = Image.open(BytesIO(input_bytes)).convert("RGB")
+        max_size = 1024
+        if max(img.size) > max_size:
+            img.thumbnail((max_size, max_size), Image.LANCZOS)
+        output_img = _remover.process(img, type="rgba")
 
-        # rembg works on bytes — faster than passing PIL images
-        output_bytes = remove(input_bytes)
+        buf = BytesIO()
+        output_img.save(buf, format="PNG")
+        output_bytes = buf.getvalue()
 
-        # Build output filename: same stem, always PNG (transparency)
         original_name = os.path.basename(obj.input_image.name)
         stem = os.path.splitext(original_name)[0]
         output_name = f"bg_removed_{stem}.png"
 
-        output_file = ContentFile(output_bytes, name=output_name)
-        obj.output_image.save(output_name, output_file, save=False)
+        obj.output_image.save(output_name, ContentFile(output_bytes, name=output_name), save=False)
         obj.status = "completed"
         obj.save(update_fields=["output_image", "status"])
 
         logger.info("Background removal complete for ImageUpload %s", image_id)
 
     except Exception as exc:
-        logger.error(
-            "Background removal failed for ImageUpload %s: %s",
-            image_id, exc, exc_info=True,
-        )
-        # Retry up to max_retries before marking failed
+        logger.error("Background removal failed for ImageUpload %s: %s", image_id, exc, exc_info=True)
         try:
             raise self.retry(exc=exc)
         except self.MaxRetriesExceededError:
