@@ -23,7 +23,7 @@ class RemoveBGView(APIView):
         description=(
             "Accepts a JPEG, PNG, or WebP image (max 10 MB). "
             "Background removal runs asynchronously via Celery. "
-            "Use the returned `id` to poll `/api/status/{id}/` for completion."
+            "Use the returned `id` to poll `/api/status/{id}/` for completion. yes"
         ),
         request=ImageUploadCreateSerializer,
         responses={
